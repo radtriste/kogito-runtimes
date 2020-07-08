@@ -243,6 +243,7 @@
     <module>archetypes</module>
     <module>grafana-api</module>
     <module>integration-tests</module>
+    <module>jenkins-spock-tests</module>
   </modules>
 
   <dependencyManagement>
@@ -797,8 +798,7 @@
         <groupId>io.rest-assured</groupId>
         <artifactId>json-schema-validator</artifactId>
         <version>${version.io.restassured}</version>
-    </dependency>
-      
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
