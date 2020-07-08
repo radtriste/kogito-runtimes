@@ -1,0 +1,265 @@
+import org.jenkinsci.plugins.workflow.libs.Library
+@Library('jenkins-pipeline-shared-libraries')_
+
+deployProperties = [:]
+
+pipeline {
+    agent {
+        label 'kie-rhel7 && kie-mem16g'
+    }
+    environment {
+        PROPERTIES_FILE_NAME = "deployment.properties"
+        BOT_CREDENTIALS_ID = "bsig-gh-bot"
+    }
+    parameters {
+        string(name: 'DISPLAY_NAME', defaultValue: '', description: 'Setup a specific build display name')
+        string(name: 'DEPLOY_BUILD_URL', defaultValue: '', description: 'URL to jenkins deploy build to retrieve the `deployment.properties` file. If base parameters are defined, they will override the `deployment.properties` information')
+        string(name: 'STAGING_REPO_URL', defaultValue: '', description: 'Override `deployment.properties`.')
+        string(name: 'GIT_AUTHOR', defaultValue: 'kiegroup', description: 'Which Git author repository ?')
+        string(name: 'BUILD_BRANCH_NAME', defaultValue: 'master', description: 'Override `deployment.properties`. Which branch to build? Set if you are not on a multibranch pipeline.')
+        booleanParam(name: 'RELEASE', defaultValue: false, description: 'Override `deployment.properties`. Is this build for a release?')
+        string(name: 'PROJECT_VERSION', defaultValue: '', description: 'Override `deployment.properties`. Optional if not RELEASE. If RELEASE, cannot be empty.')
+        string(name: 'GIT_TAG', defaultValue: '', description: 'Git tag to set, if different from PROJECT_VERSION')
+    }
+    stages {
+        stage('Initialization') {
+            steps {
+                script {
+                    if (params.DISPLAY_NAME != "") {
+                        currentBuild.displayName = params.DISPLAY_NAME
+                    }
+
+                    readDeployProperties()
+
+                    if (isRelease()) {
+                        assert getProjectVersion() != ''
+                    }
+                }
+            }
+        }
+        stage('Is staging repository promoted?') {
+            when {
+                expression { return isRelease() && getParamOrDeployProperty("STAGING_REPO_URL", "staging-repo.url") != '' }
+            }
+            steps {
+                script {
+                    def pipelineName = "Kogito Runtimes promote pipeline"
+                    withCredentials([string(credentialsId: "KOGITO_CI_EMAIL_TO", variable: 'ZULIP_EMAIL')]) {
+                        emailext body: "${getProjectVersion()} artifacts are ready for promotion.\n" +
+                                 "The staging repository can be found at: ${getParamOrDeployProperty('STAGING_REPO_URL', 'staging-repo.url')}\n" +
+                                 "Please confirm that the staging repository has been promoted here: ${env.BUILD_URL}input",
+                                 subject: "Release #${getBuildBranch()}",
+                                 to: ZULIP_EMAIL
+                    }
+                    input message: "Has the staging repository been promoted?", ok: "Yes"
+                }
+            }
+        }
+        stage('Merge runtimes deploy PR and tag') {
+            when {
+                expression { return isRelease() }
+            }
+            steps{
+                dir("kogito-runtimes") {
+                    checkoutRepo("kogito-runtimes")
+                    mergeAndPush("kogito-runtimes")
+                    tagLatest()
+                }
+            }
+        }
+        stage('Merge apps deploy PR and tag') {
+            when {
+                expression { return isRelease() }
+            }
+            steps{
+                dir("kogito-apps") {
+                    checkoutRepo("kogito-apps")
+                    mergeAndPush("kogito-apps")
+                    tagLatest()
+                }
+            }
+        }
+        stage('Merge examples deploy PR and tag') {
+            when {
+                expression { return isRelease() }
+            }
+            steps{
+                dir("kogito-examples") {
+                    checkoutRepo("kogito-examples")
+                    mergeAndPush("kogito-examples")
+                    tagLatest()
+
+                    // update stable branch to tagged commit
+                    githubscm.createBranch("stable")
+                    withCredentials([usernamePassword(credentialsId: "kie-ci", usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        sh("git config --local credential.helper \"!f() { echo username=\\$GIT_USERNAME; echo password=\\$GIT_PASSWORD; }; f\"")
+                        sh("git push --force origin stable")
+                    }
+                }
+            }
+        }
+        stage('Set runtimes next snapshot version'){
+            when {
+                expression { return isRelease() }
+            }
+            steps {
+                dir("kogito-runtimes-bot") {
+                    prepareForPR("kogito-runtimes")
+                    maven.mvnVersionsSet(getSnapshotVersion())
+                    // Step needed to have runtimes artifacts into the local repository, in order to set apps version correctly
+                    sh "mvn -B clean install -DskipTests"
+                    commitAndCreatePR("kogito-runtimes")
+                }
+                dir("kogito-runtimes") {
+                    mergeAndPush("kogito-runtimes")
+                }
+            }
+        }
+        stage('Set apps next snapshot version'){
+            when {
+                expression { return isRelease() }
+            }
+            steps {
+                dir("kogito-apps-bot") {
+                    prepareForPR("kogito-apps")
+                    maven.mvnVersionsUpdateParentAndChildModules(getSnapshotVersion())
+                    commitAndCreatePR("kogito-apps")
+                }
+                dir("kogito-apps") {
+                    mergeAndPush("kogito-apps")
+                }
+            }
+        }
+        stage('Set examples next snapshot version'){
+            when {
+                expression { return isRelease() }
+            }
+            steps {
+                dir("kogito-examples-bot") {
+                    prepareForPR("kogito-examples")
+                    maven.mvnVersionsSet(getSnapshotVersion())
+                    commitAndCreatePR("kogito-examples")
+                }
+                dir("kogito-examples") {
+                    mergeAndPush("kogito-examples")
+                }
+            }
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Deployment properties
+//////////////////////////////////////////////////////////////////////////////
+
+void readDeployProperties(){
+    if (params.DEPLOY_BUILD_URL != ''){
+        sh "wget ${params.DEPLOY_BUILD_URL}artifact/${PROPERTIES_FILE_NAME} -O ${PROPERTIES_FILE_NAME}"
+        deployProperties = readProperties file: PROPERTIES_FILE_NAME
+        // echo all properties
+        echo deployProperties.collect{ entry -> "${entry.key}=${entry.value}" }.join("\n")
+    }
+}
+
+boolean hasDeployProperty(String key){
+    return deployProperties[key] != null
+}
+
+String getDeployProperty(String key){
+    if(hasDeployProperty(key)){
+        return deployProperties[key]
+    }
+    return ""
+}
+
+String getParamOrDeployProperty(String paramKey, String deployPropertyKey){
+    if (params[paramKey] != ""){
+        return params[paramKey]
+    }
+    return getDeployProperty(deployPropertyKey)
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Getter / Setter
+//////////////////////////////////////////////////////////////////////////////
+
+boolean isRelease() {
+    return params.RELEASE || (getDeployProperty("release") == "true")
+}
+
+String getProjectVersion() {
+    return getParamOrDeployProperty("PROJECT_VERSION", "project.version")
+}
+
+String getSnapshotVersion() {
+    return util.getNextSnapshot(getProjectVersion())
+}
+
+String getGitTag() {
+    return params.GIT_TAG != "" ? params.GIT_TAG : getProjectVersion()
+}
+
+String getBuildBranch() {
+    return getParamOrDeployProperty("BUILD_BRANCH_NAME", "git.branch")
+}
+
+String getGitAuthor() {
+    return getParamOrDeployProperty("GIT_AUTHOR", "git.author")
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Git
+//////////////////////////////////////////////////////////////////////////////
+
+void checkoutRepo(String repo) {
+    checkout(githubscm.resolveRepository(repo, getGitAuthor(), getBuildBranch(), false))
+    // need to manually checkout branch since on a detached branch after checkout command
+    sh "git checkout ${getBuildBranch()}"
+}
+
+void mergeAndPush(String repo) {
+    if (getDeployProperty("${repo}.pr.link") != '') {
+        githubscm.mergePR(getDeployProperty("${repo}.pr.link"))
+        githubscm.pushObject("origin", getBuildBranch())
+    }
+}
+
+void tagLatest() {
+    if (getGitTag() != '') {
+        githubscm.tagRepository(getGitTag(), env.BUILD_TAG)
+        githubscm.pushObject("origin", "--tags ${getGitTag()}")
+    }
+}
+
+void prepareForPR(String repo) {
+    checkout(githubscm.resolveRepository(repo, getGitAuthor(), getBuildBranch(), false))
+    githubscm.forkRepo(env.BOT_CREDENTIALS_ID)
+    githubscm.createBranch(getSnapshotVersion())
+}
+
+void addNotIgnoredPoms() {
+    // based on https://stackoverflow.com/a/59888964/8811872
+    sh '''
+    find . -type f -name 'pom.xml' > found_poms.txt
+    poms_to_add=""
+    while IFS= read -r pom; do
+        if ! git check-ignore -q "\$pom"; then
+            poms_to_add="\$poms_to_add \$pom"
+        fi
+    done < found_poms.txt
+    rm found_poms.txt
+    git add \$poms_to_add
+    '''
+}
+
+void commitAndCreatePR(String repo) {
+    def commitMsg = "Update snapshot version to ${getSnapshotVersion()}"
+    def prBody = "Generated by build ${BUILD_TAG}: ${BUILD_URL}"
+    // Not using githubscm.commitChanges() because globbing won't work.
+    // See: https://github.com/kiegroup/kogito-runtimes/pull/570#discussion_r449268738
+    addNotIgnoredPoms()
+    sh "git commit -m '${commitMsg}'"
+    githubscm.pushObject("origin", getSnapshotVersion(), env.BOT_CREDENTIALS_ID)
+    deployProperties["${repo}.pr.link"] = githubscm.createPR(commitMsg, prBody, getBuildBranch(), env.BOT_CREDENTIALS_ID)
+}
+
