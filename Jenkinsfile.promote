@@ -2,24 +2,35 @@ import org.jenkinsci.plugins.workflow.libs.Library
 @Library('jenkins-pipeline-shared-libraries')_
 
 deployProperties = [:]
+pipelineProperties = [:]
 
 pipeline {
     agent {
-        label 'kie-rhel7 && kie-mem16g'
-    }
-    environment {
-        PROPERTIES_FILE_NAME = "deployment.properties"
-        BOT_CREDENTIALS_ID = "bsig-gh-bot"
+        label 'kie-rhel7'
     }
     parameters {
         string(name: 'DISPLAY_NAME', defaultValue: '', description: 'Setup a specific build display name')
+        
+        // Deploy job url to retrieve deployment.properties
         string(name: 'DEPLOY_BUILD_URL', defaultValue: '', description: 'URL to jenkins deploy build to retrieve the `deployment.properties` file. If base parameters are defined, they will override the `deployment.properties` information')
-        string(name: 'STAGING_REPO_URL', defaultValue: '', description: 'Override `deployment.properties`.')
-        string(name: 'GIT_AUTHOR', defaultValue: 'kiegroup', description: 'Which Git author repository ?')
-        string(name: 'BUILD_BRANCH_NAME', defaultValue: 'master', description: 'Override `deployment.properties`. Which branch to build? Set if you are not on a multibranch pipeline.')
+        // Git information which can override
+        string(name: 'GIT_AUTHOR', defaultValue: '', description: 'Which Git author repository ?')
+        string(name: 'BUILD_BRANCH_NAME', defaultValue: '', description: 'Override `deployment.properties`. Which branch to build? Set if you are not on a multibranch pipeline.')
+        // Release information which can override
         booleanParam(name: 'RELEASE', defaultValue: false, description: 'Override `deployment.properties`. Is this build for a release?')
         string(name: 'PROJECT_VERSION', defaultValue: '', description: 'Override `deployment.properties`. Optional if not RELEASE. If RELEASE, cannot be empty.')
+        string(name: 'STAGING_REPO_URL', defaultValue: '', description: 'Override `deployment.properties`.')
         string(name: 'GIT_TAG', defaultValue: '', description: 'Git tag to set, if different from PROJECT_VERSION')
+    }
+    environment {
+        PROPERTIES_FILE_NAME = "deployment.properties"
+        
+        // TODO to uncomment
+        //BOT_CREDENTIALS_ID = "bsig-gh-bot"
+        BOT_CREDENTIALS_ID = "radtriste-bot"
+
+        // TODO to remove & where used
+        AUTHOR_CREDS = "radtriste"
     }
     stages {
         stage('Initialization') {
@@ -48,7 +59,7 @@ pipeline {
                         emailext body: "${getProjectVersion()} artifacts are ready for promotion.\n" +
                                  "The staging repository can be found at: ${getParamOrDeployProperty('STAGING_REPO_URL', 'staging-repo.url')}\n" +
                                  "Please confirm that the staging repository has been promoted here: ${env.BUILD_URL}input",
-                                 subject: "Release #${getBuildBranch()}",
+                                 subject: "[Testing phase] Release #${getBuildBranch()}",
                                  to: ZULIP_EMAIL
                     }
                     input message: "Has the staging repository been promoted?", ok: "Yes"
@@ -62,7 +73,7 @@ pipeline {
             steps{
                 dir("kogito-runtimes") {
                     checkoutRepo("kogito-runtimes")
-                    mergeAndPush("kogito-runtimes")
+                    mergeAndPush("kogito-runtimes", getDeployPrLink("kogito-runtimes"))
                     tagLatest()
                 }
             }
@@ -74,7 +85,7 @@ pipeline {
             steps{
                 dir("kogito-apps") {
                     checkoutRepo("kogito-apps")
-                    mergeAndPush("kogito-apps")
+                    mergeAndPush("kogito-apps", getDeployPrLink("kogito-apps"))
                     tagLatest()
                 }
             }
@@ -86,15 +97,16 @@ pipeline {
             steps{
                 dir("kogito-examples") {
                     checkoutRepo("kogito-examples")
-                    mergeAndPush("kogito-examples")
+                    mergeAndPush("kogito-examples", getDeployPrLink("kogito-examples"))
                     tagLatest()
 
+                    // TODO to uncomment if needed
                     // update stable branch to tagged commit
-                    githubscm.createBranch("stable")
-                    withCredentials([usernamePassword(credentialsId: "kie-ci", usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
-                        sh("git config --local credential.helper \"!f() { echo username=\\$GIT_USERNAME; echo password=\\$GIT_PASSWORD; }; f\"")
-                        sh("git push --force origin stable")
-                    }
+                    // githubscm.createBranch("stable")
+                    // withCredentials([usernamePassword(credentialsId: "kie-ci", usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                    //     sh("git config --local credential.helper \"!f() { echo username=\\$GIT_USERNAME; echo password=\\$GIT_PASSWORD; }; f\"")
+                    //     sh("git push --force origin stable")
+                    // }
                 }
             }
         }
@@ -111,7 +123,7 @@ pipeline {
                     commitAndCreatePR("kogito-runtimes")
                 }
                 dir("kogito-runtimes") {
-                    mergeAndPush("kogito-runtimes")
+                    mergeAndPush("kogito-runtimes", getPipelinePrLink("kogito-runtimes"))
                 }
             }
         }
@@ -126,7 +138,7 @@ pipeline {
                     commitAndCreatePR("kogito-apps")
                 }
                 dir("kogito-apps") {
-                    mergeAndPush("kogito-apps")
+                    mergeAndPush("kogito-apps", getPipelinePrLink("kogito-apps"))
                 }
             }
         }
@@ -141,7 +153,7 @@ pipeline {
                     commitAndCreatePR("kogito-examples")
                 }
                 dir("kogito-examples") {
-                    mergeAndPush("kogito-examples")
+                    mergeAndPush("kogito-examples", getPipelinePrLink("kogito-examples") )
                 }
             }
         }
@@ -207,6 +219,20 @@ String getGitAuthor() {
     return getParamOrDeployProperty("GIT_AUTHOR", "git.author")
 }
 
+String getDeployPrLink(String repo){
+    return getDeployProperty("${repo}.pr.link")
+}
+
+String getPipelinePrLink(String repo){
+    return pipelineProperties["${repo}.pr.link"]
+}
+
+void setPipelinePrLink(String repo, String value){
+    return pipelineProperties["${repo}.pr.link"] = value
+}
+
+
+
 //////////////////////////////////////////////////////////////////////////////
 // Git
 //////////////////////////////////////////////////////////////////////////////
@@ -217,22 +243,22 @@ void checkoutRepo(String repo) {
     sh "git checkout ${getBuildBranch()}"
 }
 
-void mergeAndPush(String repo) {
-    if (getDeployProperty("${repo}.pr.link") != '') {
-        githubscm.mergePR(getDeployProperty("${repo}.pr.link"))
-        githubscm.pushObject("origin", getBuildBranch())
+void mergeAndPush(String repo, String prLink) {
+    if (prLink != '') {
+        githubscm.mergePR(prLink, env.AUTHOR_CREDS)
+        githubscm.pushObject("origin", getBuildBranch(), env.AUTHOR_CREDS)
     }
 }
 
 void tagLatest() {
     if (getGitTag() != '') {
         githubscm.tagRepository(getGitTag(), env.BUILD_TAG)
-        githubscm.pushObject("origin", "--tags ${getGitTag()}")
+        githubscm.pushObject("origin", "--tags ${getGitTag()}", env.AUTHOR_CREDS)
     }
 }
 
 void prepareForPR(String repo) {
-    checkout(githubscm.resolveRepository(repo, getGitAuthor(), getBuildBranch(), false))
+    checkout(githubscm.resolveRepository(repo, getGitAuthor(), getBuildBranch(), false, env.AUTHOR_CREDS))
     githubscm.forkRepo(env.BOT_CREDENTIALS_ID)
     githubscm.createBranch(getSnapshotVersion())
 }
@@ -260,6 +286,6 @@ void commitAndCreatePR(String repo) {
     addNotIgnoredPoms()
     sh "git commit -m '${commitMsg}'"
     githubscm.pushObject("origin", getSnapshotVersion(), env.BOT_CREDENTIALS_ID)
-    deployProperties["${repo}.pr.link"] = githubscm.createPR(commitMsg, prBody, getBuildBranch(), env.BOT_CREDENTIALS_ID)
+    setPipelinePrLink(repo, githubscm.createPR(commitMsg, prBody, getBuildBranch(), env.BOT_CREDENTIALS_ID))
 }
 
