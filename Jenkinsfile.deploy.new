@@ -7,14 +7,29 @@ pipeline {
     }
     parameters {
         string(name: 'DISPLAY_NAME', defaultValue: '', description: 'Setup a specific build display name')
-        string(name: 'BUILD_BRANCH_NAME', defaultValue: 'master', description: 'Which branch to build? Set if you are not on a multibranch pipeline.')
-        string(name: 'GIT_AUTHOR', defaultValue: 'kiegroup', description: 'Which Git author repository ?')
+        
+        // Git information
+        // TODO to change back to master
+        string(name: 'BUILD_BRANCH_NAME', defaultValue: 'release_pipeline', description: 'Which branch to build? Set if you are not on a multibranch pipeline.')
+        // TODO to change back to kiegroup
+        string(name: 'GIT_AUTHOR', defaultValue: 'radtriste', description: 'Which Git author repository ?')
+
+        // Deploy information
+        string(name: 'MAVEN_DEPLOY_REPOSITORY', defaultValue: '', description: 'Specify a Maven repository to deploy the artifacts.')
+
+        // Release information
         booleanParam(name: 'RELEASE', defaultValue: false, description: 'Is this build for a release?')
         string(name: 'PROJECT_VERSION', defaultValue: '', description: 'Optional if not RELEASE. If RELEASE, cannot be empty.')
     }
     environment {
         MAVEN_OPTS = '-Xms1024m -Xmx4g'
-        BOT_CREDENTIALS_ID = "bsig-gh-bot"
+
+        // TODO uncomment
+        //BOT_CREDENTIALS_ID = "bsig-gh-bot"
+        BOT_CREDENTIALS_ID = "radtriste-bot"
+
+        // TODO to remove & where used
+        AUTHOR_CREDS = "radtriste"
     }
     tools {
         maven 'kie-maven-3.6.2'
@@ -28,18 +43,17 @@ pipeline {
         stage("Initialize") {
             steps {
                 script {
+                    cleanWs()
+                    
                     if (params.DISPLAY_NAME != "") {
                         currentBuild.displayName = params.DISPLAY_NAME
                     }
 
-                    if (env.BRANCH_NAME != "") {
-                        // Switch to branch if not on a multibranch pipeline
-                        env.BRANCH_NAME = getBuildBranch()
-                    }
                     if (isRelease()) {
                         assert getProjectVersion() != ''
                     }
                     setDeployPropertyIfNeeded('git.branch', getBuildBranch())
+                    setDeployPropertyIfNeeded('git.author', getGitAuthor())
                     setDeployPropertyIfNeeded('project.version', getProjectVersion())
                     setDeployPropertyIfNeeded('release', isRelease())
                 }
@@ -47,11 +61,11 @@ pipeline {
         }
         stage('Clone repositories') { 
             steps {
-                cloneRepo("kogito-runtimes")
-                cloneRepo("kogito-apps")
-                cloneRepo("kogito-examples")
-                cloneRepo("kogito-examples", "kogito-examples-persistence")
-                cloneRepo("kogito-examples", "kogito-examples-events")
+                checkoutRepo("kogito-runtimes")
+                checkoutRepo("kogito-apps")
+                checkoutRepo("kogito-examples")
+                checkoutRepo("kogito-examples", "kogito-examples-persistence")
+                checkoutRepo("kogito-examples", "kogito-examples-events")
             }
         }
         stage('Prepare for PR'){
@@ -69,9 +83,13 @@ pipeline {
                 expression { return isRelease() }
             }
             steps {
-                configFileProvider([configFile(fileId: '771ff52a-a8b4-40e6-9b22-d54c7314aa1e', targetLocation: 'maven-settings.xml', variable: 'MAVEN_SETTINGS_FILE')]){
-                    sh "echo '-B -s ${MAVEN_SETTINGS_FILE}' | tee kogito-{runtimes,apps,examples,examples-persistence}/.mvn/maven.config"
-                }
+                echo "Setup Maven release config"
+                // TODO to uncomment
+                // Commented to avoid to deploy to jboss staging repository for now ...
+                // We don't need any settings.xml to deploy artifacts to internal nexus for the tests
+                // configFileProvider([configFile(fileId: '771ff52a-a8b4-40e6-9b22-d54c7314aa1e', targetLocation: 'maven-settings.xml', variable: 'MAVEN_SETTINGS_FILE')]){
+                //     sh "echo '-B -s ${MAVEN_SETTINGS_FILE}' | tee kogito-{runtimes,apps,examples,examples-persistence}/.mvn/maven.config"
+                // }
             }
         }
         stage('Update project version'){
@@ -79,18 +97,27 @@ pipeline {
                 expression { return getProjectVersion() != '' }
             }
             steps {
+                // kogito-runtimes
+                // first build&install the current version (usually SNAPSHOT) locally as it is needed later by other repos
+                mavenCleanInstall("kogito-runtimes", true, ["full"], "-U")
                 dir("kogito-runtimes") {
                     script {
                         maven.mvnVersionsSet(getProjectVersion())
-                        // Step needed to have runtimes artifacts into the local repository, in order to set apps version correctly
+                        
                         sh "mvn -B clean install -DskipTests"
                     }
                 }
+                // Step needed to have runtimes artifacts into the local repository, in order to set apps version correctly
+                mavenCleanInstall("kogito-runtimes", true, [], "-U")
+
+                // kogito-apps
                 dir("kogito-apps") {
                     script {
                         maven.mvnVersionsUpdateParentAndChildModules(getProjectVersion())
                     }
                 }
+
+                // kogito-examples
                 dir("kogito-examples") {
                     script {
                         maven.mvnVersionsSet(getProjectVersion())
@@ -100,7 +127,8 @@ pipeline {
         }
         stage('Build kogito-runtimes') {
             steps {
-                mavenInstall("kogito-runtimes")
+                // TODO remove echo
+                echo 'mavenCleanInstall("kogito-runtimes")'
             }
             post {
                 always {
@@ -110,7 +138,8 @@ pipeline {
         }
         stage('Build kogito-apps') {
             steps {
-                mavenInstall("kogito-runtimes")
+                // TODO remove echo
+                echo 'mavenCleanInstall("kogito-runtimes")'
             }
             post {
                 always {
@@ -120,7 +149,8 @@ pipeline {
         }
         stage('Build kogito-examples') {
             steps {
-                mavenInstall("kogito-runtimes")
+                // TODO remove echo
+                echo 'mavenCleanInstall("kogito-runtimes")'
             }
             post {
                 always {
@@ -128,13 +158,10 @@ pipeline {
                 }
             }
         }
-        stage('Build kogito-examples with persistence') {
+        stage('Check kogito-examples with persistence') {
             steps {
-                dir("kogito-examples-persistence") {
-                    script {
-                        maven.runMavenWithSubmarineSettings('clean install -Ppersistence', false)
-                    }
-                }
+                // TODO remove echo
+                echo 'mavenCleanInstall("kogito-examples-persistence", false, ["persistence"])'
             }
             post {
                 always {
@@ -142,13 +169,10 @@ pipeline {
                 }
             }
         }
-        stage('Build kogito-examples with events') {
+        stage('Check kogito-examples with events') {
             steps {
-                dir("kogito-examples-events") {
-                    script {
-                        maven.runMavenWithSubmarineSettings('clean install -Pevents', false)
-                    }
-                }
+                // TODO remove echo
+                echo 'mavenCleanInstall("kogito-examples-events", false, ["events"])'
             }
             post {
                 always {
@@ -161,22 +185,6 @@ pipeline {
                 mavenDeploy("kogito-runtimes")
                 mavenDeploy("kogito-apps")
                 mavenDeploy("kogito-examples")
-            }
-        }
-        stage('Get staging repository URL') {
-            when {
-                expression { return isRelease() }
-            }
-            steps {
-                script {
-                    def pipelineName = "Kogito Runtimes deploy pipeline"
-                    withCredentials([string(credentialsId: "KOGITO_CI_EMAIL_TO", variable: 'ZULIP_EMAIL')]) {
-                        emailext body: "${pipelineName} #${env.BUILD_NUMBER} is ready for release and needs the staging repository URL. Please provide it at: ${env.BUILD_URL}input",
-                                 subject: "Release #${getBuildBranch()}",
-                                 to: ZULIP_EMAIL
-                    }
-                    deployProperties["staging-repo.url"] = input(message: "Enter staging repository URL:", parameters: [string(name: 'STAGING_REPO_URL')])
-                }
             }
         }
         stage('Create PR'){
@@ -197,8 +205,9 @@ pipeline {
                 script {
                     def pipelineName = "Kogito Runtimes deploy pipeline"
                     withCredentials([string(credentialsId: "KOGITO_CI_EMAIL_TO", variable: 'ZULIP_EMAIL')]) {
-                        emailext body: "${pipelineName} #${env.BUILD_NUMBER} is ready for release and needs the staging repository URL. Please provide it at: ${env.BUILD_URL}input",
-                                 subject: "Release #${getBuildBranch()}",
+                        // TODO remove `[Testing phase]`
+                        emailext body: "Testing of ${pipelineName} #${env.BUILD_NUMBER} => Artifacts with version ${getProjectVersion()} have been pushed to staging repository. Please provide the staging repository URL at: ${env.BUILD_URL}input",
+                                 subject: "[Testing phase] Release #${getBuildBranch()}",
                                  to: ZULIP_EMAIL
                     }
                     deployProperties["staging-repo.url"] = input(message: "Enter staging repository URL:", parameters: [string(name: 'STAGING_REPO_URL')])
@@ -218,11 +227,12 @@ pipeline {
     }
 }
 
-void saveReports(boolean allowEmpty=false){
+// TODO Set default to false
+void saveReports(boolean allowEmpty=true){
     junit testResults: '**/target/surefire-reports/**/*.xml, **/target/failsafe-reports/**/*.xml', allowEmptyResults: allowEmpty
 }
 
-void cloneRepo(String repo, String dirName=repo) {
+void checkoutRepo(String repo, String dirName=repo) {
     dir(dirName) {
         checkout(githubscm.resolveRepository(repo, getGitAuthor(), getBuildBranch(), false))
     }
@@ -275,6 +285,11 @@ String getBuildBranch(){
     return params.BUILD_BRANCH_NAME
 }
 
+// TODO to delete
+String getCurrentDirName(){
+    return sh(script: 'printf \'%s\\n\' "${PWD##*/}"', returnStdout: true).trim()
+}
+
 String getProjectVersion(){
     return params.PROJECT_VERSION
 }
@@ -285,23 +300,25 @@ void setDeployPropertyIfNeeded(String key, def value){
     }
 }
 
-void mavenInstall(String directory, boolean skipTests = false, String... profiles) {
-    installCmd = 'clean install'
-    if(profiles.length > 0){
-        installCmd += " -P${profiles.join(',')}"
-    }
-    dir(directory) {
-        maven.runMavenWithSubmarineSettings(installCmd, skipTests)
-    }
+// TODO default skipTests to false
+void mavenCleanInstall(String directory, boolean skipTests = true, List profiles = [], String extraArgs = "") {
+    runMaven("clean install", directory, skipTests, profiles, extraArgs)
 }
 
 void mavenDeploy(String directory) {
-    deployCmd = 'clean deploy'
-    if(params.MAVEN_DEPLOY_REPOSITORY != ''){
-        deployCmd += " -DaltDeploymentRepository=runtimes-artifacts::default::${params.MAVEN_DEPLOY_REPOSITORY}"
-    }
-    dir(directory) {
-        maven.runMavenWithSubmarineSettings(deployCmd, true)
-    }
+    extraArgs = params.MAVEN_DEPLOY_REPOSITORY != '' ? "-DaltDeploymentRepository=runtimes-artifacts::default::${params.MAVEN_DEPLOY_REPOSITORY}" : ""
+    runMaven("clean deploy", directory, true, [], extraArgs)
 }
 
+void runMaven(String command, String directory, boolean skipTests = false, List profiles = [], String extraArgs = "") {
+    mvnCmd = command
+    if(profiles.size() > 0){
+        mvnCmd += " -P${profiles.join(',')}"
+    }
+    if(extraArgs != ""){
+        mvnCmd += " ${extraArgs}"
+    }
+    dir(directory) {
+        maven.runMavenWithSubmarineSettings(mvnCmd, skipTests)
+    }
+}
