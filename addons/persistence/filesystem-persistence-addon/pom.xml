@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.kie.kogito</groupId>
     <artifactId>persistence</artifactId>
-    <version>201.0.0</version>
+    <version>202.0.0</version>
   </parent>
   <artifactId>filesystem-persistence-addon</artifactId>
   <name>Kogito :: Add-Ons :: Persistence :: File System</name>

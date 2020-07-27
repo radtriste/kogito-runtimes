@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.kie.kogito</groupId>
     <artifactId>kogito-runtimes</artifactId>
-    <version>201.0.0</version>
+    <version>202.0.0</version>
   </parent>
   <artifactId>integration-tests</artifactId>
   <name>Kogito :: Integration Tests</name>
