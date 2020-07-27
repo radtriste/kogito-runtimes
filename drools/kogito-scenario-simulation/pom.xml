@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.kie.kogito</groupId>
         <artifactId>drools</artifactId>
-        <version>203.0.1-SNAPSHOT</version>
+        <version>204.0.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>kogito-scenario-simulation</artifactId>
