@@ -6,7 +6,7 @@
 
   <groupId>org.kie.kogito</groupId>
   <artifactId>kogito-runtimes</artifactId>
-  <version>207.0.0</version>
+  <version>207.0.1-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>Kogito Runtimes</name>
