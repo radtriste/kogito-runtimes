@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.kie.kogito</groupId>
     <artifactId>jbpm</artifactId>
-    <version>402.0.0</version>
+    <version>402.0.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>jbpm-serverless-workflow</artifactId>
