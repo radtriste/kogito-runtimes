@@ -21,7 +21,7 @@
   <parent>
     <artifactId>process-management</artifactId>
     <groupId>org.kie.kogito</groupId>
-    <version>801.0.0</version>
+    <version>801.0.1-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
