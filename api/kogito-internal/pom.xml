@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.kie.kogito</groupId>
     <artifactId>kogito-api-parent</artifactId>
-    <version>803.0.0</version>
+    <version>803.0.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>kogito-internal</artifactId>
