@@ -5,18 +5,14 @@ pipeline {
         label 'kie-rhel7 && kie-mem16g'
     }
     environment {
-        KOGITO_CI_EMAIL_TO = credentials('KOGITO_CI_EMAIL_TO')
+        KOGITO_CI_EMAIL_TO = credentials("${JENKINS_EMAIL_CREDS_ID}")
         MAVEN_OPTS = '-Xms1024m -Xmx4g'
     }
     tools {
         maven 'kie-maven-3.6.3'
         jdk 'kie-jdk11'
     }
-    triggers {
-        cron ('H 4 * * *')
-    }
     options {
-        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '5')
         timeout(time: 360, unit: 'MINUTES')
     }
     stages {

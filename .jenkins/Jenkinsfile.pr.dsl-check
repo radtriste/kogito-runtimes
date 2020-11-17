@@ -1,0 +1,41 @@
+
+changeAuthor = env.ghprbPullAuthorLogin ?: CHANGE_AUTHOR
+changeBranch = env.ghprbSourceBranch ?: CHANGE_BRANCH
+changeTarget = env.ghprbTargetBranch ?: CHANGE_TARGET
+
+pipeline {
+  agent {
+    label 'kie-rhel7 && !master'
+  }
+
+  tools {
+      jdk 'kie-jdk11'
+  }
+
+  stages {
+    stage('Initialize') {
+      steps {
+        script {
+          githubscm.checkoutIfExists(repo, changeAuthor, changeBranch, 'kiegroup', changeTarget, true)
+
+          dir('kogito-pipelines') {
+            githubscm.checkoutIfExists('kogito-pipelines', changeAuthor, changeBranch, 'kiegroup', changeTarget, true)
+          }
+        }
+      }
+    }
+
+    stage('Launch DSL Tests') {
+      steps {
+        script {
+          sh "cd .jenkins/dsl && ${WORKSPACE}/kogito-pipelines/dsl/seed/scripts/seed_test.sh"
+        }
+      }
+    }
+  }
+  post {
+    always {
+      cleanWs()
+    }
+  }
+}

@@ -4,19 +4,15 @@ pipeline {
     agent {
         label 'kie-rhel7 && kie-mem16g'
     }
-    triggers {
-        cron('H 20 * * 1-5')
-    }
     tools {
         maven 'kie-maven-3.6.2'
         jdk 'kie-jdk11'
     }
     options {
-        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '10')
         timeout(time: 360, unit: 'MINUTES')
     }
     environment {
-        KOGITO_CI_EMAIL_TO = credentials('KOGITO_CI_EMAIL_TO')
+        KOGITO_CI_EMAIL_TO = credentials("${JENKINS_EMAIL_CREDS_ID}")
         SONARCLOUD_TOKEN = credentials('SONARCLOUD_TOKEN')
         MAVEN_OPTS = '-Xms1024m -Xmx4g'
     }

@@ -15,42 +15,18 @@ pipeline {
         maven 'kie-maven-3.6.2'
         jdk 'kie-jdk11'
     }
-    
+
     options {
-        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '10')
         timeout(time: 360, unit: 'MINUTES')
     }
 
-    parameters {
-        string(name: 'DISPLAY_NAME', defaultValue: '', description: 'Setup a specific build display name')
-        
-        // Git information
-        string(name: 'BUILD_BRANCH_NAME', defaultValue: 'master', description: 'Which branch to build? Set if you are not on a multibranch pipeline.')
-        string(name: 'GIT_AUTHOR', defaultValue: 'kiegroup', description: 'Which Git author repository ?')
-
-        // Build&test information
-        booleanParam(name: 'SKIP_TESTS', defaultValue: false, description: 'Skip tests')
-        string(name: 'MAVEN_SETTINGS_CONFIG_FILE_ID', defaultValue: 'kogito_release_settings', description: 'Maven settings configfile to use in pipeline for Maven commands')
-
-        // Deploy information
-        string(name: 'MAVEN_DEPLOY_REPOSITORY', defaultValue: '', description: 'Specify a Maven repository to deploy the artifacts.')
-
-        // Release information
-        booleanParam(name: 'RELEASE', defaultValue: false, description: 'Is this build for a release?')
-        string(name: 'PROJECT_VERSION', defaultValue: '', description: 'Optional if not RELEASE. If RELEASE, cannot be empty.')
-        
-        // Nexus staging default parameters
-        string(name: 'NEXUS_RELEASE_URL', defaultValue: 'https://repository.jboss.org/nexus', description: 'Nexus URL for release staging')
-        string(name: 'NEXUS_RELEASE_REPOSITORY_ID', defaultValue: 'jboss-releases-repository', description: 'Nexus Release repository ID for staging')
-        string(name: 'NEXUS_STAGING_PROFILE_ID', defaultValue: '2161b7b8da0080', description: 'Nexus staging profile ID for release process ')
-        string(name: 'NEXUS_BUILD_PROMOTION_PROFILE_ID', defaultValue: 'ea49ccd6f174', description: 'Nexus Build Promotion profile ID for release process')
-
-        // Bot author information. Set as params for easy testing.
-        string(name: 'GIT_AUTHOR_BOT', defaultValue: 'bsig-gh-bot', description: 'From which author should the PR be created ?')
-        string(name: 'BOT_CREDENTIALS_ID', defaultValue: 'bsig-gh-bot', description: 'Credentials for PR creation')
-    }
+    // parameters {
+    // For parameters, check into ./dsl/nightly_release.groovy file
+    // }
 
     environment {
+        // Some generated env is also defined into ./dsl/jobs/nightly_release.groovy file
+        
         MAVEN_OPTS = '-Xms1024m -Xmx4g'
 
         BOT_BRANCH_HASH = "${util.generateHash(10)}"
@@ -79,7 +55,7 @@ pipeline {
             post {
                 success {
                     script {
-                        setDeployPropertyIfNeeded('git.branch', getBuildBranch())
+                        setDeployPropertyIfNeeded('git.branch', getGitBranch())
                         setDeployPropertyIfNeeded('git.author', getGitAuthor())
                         setDeployPropertyIfNeeded('project.version', getProjectVersion())
                         setDeployPropertyIfNeeded('release', isRelease())
@@ -121,8 +97,8 @@ pipeline {
         stage('Deploy artifacts') {
             steps {
                 script {
-                    // Usually `params.MAVEN_DEPLOY_REPOSITORY` is used for testing purpose
-                    if(!isRelease() || params.MAVEN_DEPLOY_REPOSITORY) {
+                    // Usually `env.MAVEN_DEPLOY_REPOSITORY` is used for testing purpose
+                    if(!isRelease() || env['MAVEN_DEPLOY_REPOSITORY']) {
                         runMavenDeploy(getMavenCommand())
                     } else {
                          // Deploy locally and then to staging
@@ -146,7 +122,7 @@ pipeline {
                         setDeployPropertyIfNeeded('kogito-runtimes.pr.source.uri', "https://github.com/${getBotAuthor()}/kogito-runtimes")
                         setDeployPropertyIfNeeded('kogito-runtimes.pr.source.ref', getBotBranch())
                         setDeployPropertyIfNeeded('kogito-runtimes.pr.target.uri', "https://github.com/${getGitAuthor()}/kogito-runtimes")
-                        setDeployPropertyIfNeeded('kogito-runtimes.pr.target.ref', getBuildBranch())
+                        setDeployPropertyIfNeeded('kogito-runtimes.pr.target.ref', getGitBranch())
                     }
                 }
             }
@@ -171,7 +147,7 @@ void saveReports(boolean allowEmpty=false){
 void checkoutRepo(String repo, String dirName=repo) {
     dir(dirName) {
         deleteDir()
-        checkout(githubscm.resolveRepository(repo, getGitAuthor(), getBuildBranch(), false))
+        checkout(githubscm.resolveRepository(repo, getGitAuthor(), getGitBranch(), false))
     }
 }
 
@@ -184,12 +160,12 @@ void prepareForPR(String repo) {
 
 void commitAndCreatePR(String repo) {
     dir(repo) {
-        def commitMsg = "[${getBuildBranch()}] Update project version to ${getProjectVersion()} for release"
+        def commitMsg = "[${getGitBranch()}] Update project version to ${getProjectVersion()} for release"
         def prBody = "Generated by build ${BUILD_TAG}: ${BUILD_URL}.\nPlease do not merge, it will be merged automatically after testing."
 
         githubscm.commitChanges(commitMsg, { githubscm.findAndStageNotIgnoredFiles('pom.xml') })
         githubscm.pushObject('origin', getBotBranch(), getBotAuthorCredsID())
-        deployProperties["${repo}.pr.link"] = githubscm.createPR(commitMsg, prBody, getBuildBranch(), getBotAuthorCredsID())
+        deployProperties["${repo}.pr.link"] = githubscm.createPR(commitMsg, prBody, getGitBranch(), getBotAuthorCredsID())
     }
 }
 
@@ -198,11 +174,11 @@ boolean isRelease() {
 }
 
 String getGitAuthor(){
-    return params.GIT_AUTHOR
+    return env.GIT_AUTHOR
 }
 
-String getBuildBranch(){
-    return params.BUILD_BRANCH_NAME
+String getGitBranch(){
+    return env.GIT_BRANCH_NAME
 }
 
 String getProjectVersion(){
@@ -214,11 +190,11 @@ String getBotBranch(){
 }
 
 String getBotAuthor(){
-    return params.GIT_AUTHOR_BOT
+    return env.GIT_AUTHOR_BOT
 }
 
 String getBotAuthorCredsID(){
-    return params.BOT_CREDENTIALS_ID
+    return env.BOT_CREDENTIALS_ID
 }
 
 void setDeployPropertyIfNeeded(String key, def value){
@@ -229,7 +205,7 @@ void setDeployPropertyIfNeeded(String key, def value){
 
 MavenCommand getMavenCommand(){
     return new MavenCommand(this, ['-fae'])
-                .withSettingsXmlId(params.MAVEN_SETTINGS_CONFIG_FILE_ID)
+                .withSettingsXmlId(env.MAVEN_SETTINGS_CONFIG_FILE_ID)
                 .inDirectory('kogito-runtimes')
                 .withProperty('full')
 }
@@ -237,8 +213,8 @@ MavenCommand getMavenCommand(){
 void runMavenDeploy(MavenCommand mvnCmd){
     mvnCmd = mvnCmd.clone()
     
-    if(params.MAVEN_DEPLOY_REPOSITORY){
-        mvnCmd.withDeployRepository(params.MAVEN_DEPLOY_REPOSITORY)
+    if("${MAVEN_DEPLOY_REPOSITORY}"){
+        mvnCmd.withDeployRepository("${MAVEN_DEPLOY_REPOSITORY}")
     }
 
     mvnCmd.skipTests(true).run('clean deploy')
@@ -253,14 +229,14 @@ void runMavenDeployLocally(MavenCommand mvnCmd, String localDeployId) {
 
 void runMavenStage(MavenCommand mvnCmd, String localDeployId) {
     MavenStagingHelper stagingHelper = getStagingHelper(mvnCmd)
-    deployProperties.putAll(stagingHelper.stageLocalArtifacts(params.NEXUS_STAGING_PROFILE_ID, getLocalDeploymentFolder(localDeployId)))
-    stagingHelper.promoteStagingRepository(params.NEXUS_BUILD_PROMOTION_PROFILE_ID)
+    deployProperties.putAll(stagingHelper.stageLocalArtifacts("${NEXUS_STAGING_PROFILE_ID}", getLocalDeploymentFolder(localDeployId)))
+    stagingHelper.promoteStagingRepository("${NEXUS_BUILD_PROMOTION_PROFILE_ID}")
 }
 
 MavenStagingHelper getStagingHelper(MavenCommand mvnCmd) {
     return new MavenStagingHelper(this, mvnCmd)
-        .withNexusReleaseUrl(params.NEXUS_RELEASE_URL)
-        .withNexusReleaseRepositoryId(params.NEXUS_RELEASE_REPOSITORY_ID)
+        .withNexusReleaseUrl("${NEXUS_RELEASE_URL}")
+        .withNexusReleaseRepositoryId("${NEXUS_RELEASE_REPOSITORY_ID}")
 }
 
 String getLocalDeploymentFolder(String localDeployId){

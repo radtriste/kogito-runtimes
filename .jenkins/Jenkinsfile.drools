@@ -8,18 +8,14 @@ pipeline {
         maven 'kie-maven-3.6.2'
         jdk 'kie-jdk11'
     }
-    triggers {
-        cron ('H 2 * * *')
-    }
     options {
-        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '', numToKeepStr: '5')
         timeout(time: 360, unit: 'MINUTES')
     }
-    parameters {
-        string(name: 'BRANCH_NAME', defaultValue: "master", description: 'Set the branch to build&test')
-    }
+    // parameters {
+    // For parameters, check into ./dsl/nightly_release.groovy file
+    // }
     environment {
-        KOGITO_CI_EMAIL_TO = credentials('KOGITO_CI_EMAIL_TO')
+        KOGITO_CI_EMAIL_TO = credentials("${JENKINS_EMAIL_CREDS_ID}")
         MAVEN_OPTS = '-Xms1024m -Xmx4g'
 
         // Set into 'Initialize' stage
