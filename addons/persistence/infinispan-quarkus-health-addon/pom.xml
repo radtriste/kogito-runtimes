@@ -21,7 +21,7 @@
   <parent>
     <artifactId>persistence</artifactId>
     <groupId>org.kie.kogito</groupId>
-    <version>993.0.0</version>
+    <version>993.0.1-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
