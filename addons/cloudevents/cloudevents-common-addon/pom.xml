@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.kie.kogito</groupId>
     <artifactId>cloudevents</artifactId>
-    <version>455.0.0</version>
+    <version>455.0.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>kogito-cloudevents-common-addon</artifactId>
