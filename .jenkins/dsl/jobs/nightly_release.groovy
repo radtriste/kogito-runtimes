@@ -49,7 +49,7 @@ KogitoJobTemplate.createPipelineJob(this, getJobParams('kogito-runtimes-deploy',
         env('GIT_AUTHOR', "${GIT_AUTHOR_NAME}")
         env('AUTHOR_CREDS_ID', "${GIT_AUTHOR_CREDENTIALS_ID}")
         env('GITHUB_TOKEN_CREDS_ID', "${GIT_AUTHOR_TOKEN_CREDENTIALS_ID}")
-        env('GIT_AUTHOR_BOT', "${GIT_AUTHOR_CREDENTIALS_ID}")
+        env('GIT_AUTHOR_BOT', "${GIT_BOT_AUTHOR_NAME}")
         env('BOT_CREDENTIALS_ID', "${GIT_BOT_AUTHOR_CREDENTIALS_ID}")
 
         env('NEXUS_RELEASE_URL', "${MAVEN_NEXUS_RELEASE_URL}")
@@ -86,7 +86,7 @@ KogitoJobTemplate.createPipelineJob(this, getJobParams('kogito-runtimes-promote'
         env('GIT_AUTHOR', "${GIT_AUTHOR_NAME}")
         env('AUTHOR_CREDS_ID', "${GIT_AUTHOR_CREDENTIALS_ID}")
         env('GITHUB_TOKEN_CREDS_ID', "${GIT_AUTHOR_TOKEN_CREDENTIALS_ID}")
-        env('GIT_AUTHOR_BOT', "${GIT_AUTHOR_CREDENTIALS_ID}")
+        env('GIT_AUTHOR_BOT', "${GIT_BOT_AUTHOR_NAME}")
         env('BOT_CREDENTIALS_ID', "${GIT_BOT_AUTHOR_CREDENTIALS_ID}")
 
         env('MAVEN_SETTINGS_CONFIG_FILE_ID', "${MAVEN_SETTINGS_FILE_ID}")
