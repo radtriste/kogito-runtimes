@@ -21,7 +21,7 @@
   <parent>
     <artifactId>addons</artifactId>
     <groupId>org.kie.kogito</groupId>
-    <version>629.0.1-SNAPSHOT</version>
+    <version>987.0.0.Final</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
