@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.kie.kogito</groupId>
     <artifactId>process-svg</artifactId>
-    <version>3422.5.0</version>
+    <version>3422.5.1-SNAPSHOT</version>
   </parent>
   <artifactId>process-svg-quarkus-addon</artifactId>
   <name>Kogito :: Add-Ons :: Process SVG :: Quarkus Addon</name>
