@@ -6,7 +6,7 @@
   <parent>
     <artifactId>monitoring</artifactId>
     <groupId>org.kie.kogito</groupId>
-    <version>250.1.0</version>
+    <version>250.1.1-SNAPSHOT</version>
   </parent>
   <name>Kogito :: Add-Ons :: Monitoring Core</name>
 
