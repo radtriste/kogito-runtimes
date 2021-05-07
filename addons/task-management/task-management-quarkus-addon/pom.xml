@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.kie.kogito</groupId>
     <artifactId>task-management</artifactId>
-    <version>1.5.1-SNAPSHOT</version>
+    <version>250.1.0</version>
   </parent>
   <artifactId>task-management-quarkus-addon</artifactId>
   <name>Kogito :: Add-Ons :: Task Management :: Quarkus Addon</name>
